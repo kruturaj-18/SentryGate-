@@ -2,17 +2,16 @@ package com.sentrygate.service;
 
 import com.sentrygate.dto.PullRequestDto;
 import com.sentrygate.entity.PullRequest;
-import com.sentrygate.entity.Repository;
 import com.sentrygate.exception.ResourceNotFoundException;
 import com.sentrygate.repository.PullRequestRepository;
 import com.sentrygate.repository.RepositoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -24,14 +23,16 @@ public class PullRequestService {
     private final RepositoryRepository repositoryRepository;
 
     @Transactional(readOnly = true)
-    public List<PullRequestDto> getPullRequestsForRepo(UUID repoId) {
-        return pullRequestRepository.findByRepositoryId(repoId).stream()
+    public List<PullRequestDto> getPullRequestsForRepo(Long repoId) {
+        return pullRequestRepository.findByRepositoryId(repoId, Pageable.unpaged())
+                .getContent()
+                .stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public PullRequestDto getPullRequestById(UUID prId) {
+    public PullRequestDto getPullRequestById(Long prId) {
         PullRequest pr = pullRequestRepository.findById(prId)
                 .orElseThrow(() -> new ResourceNotFoundException("PullRequest", "id", prId));
         return mapToDto(pr);
@@ -46,24 +47,24 @@ public class PullRequestService {
         return PullRequestDto.builder()
                 .id(pr.getId())
                 .repositoryId(pr.getRepository().getId())
+                .repositoryFullName(pr.getRepository().getFullName())
                 .githubPrId(pr.getGithubPrId())
-                .prNumber(pr.getPrNumber())
+                .number(pr.getNumber())
                 .title(pr.getTitle())
                 .body(pr.getBody())
                 .state(pr.getState())
-                .authorUsername(pr.getAuthorUsername())
-                .authorAvatarUrl(pr.getAuthorAvatarUrl())
-                .sourceBranch(pr.getSourceBranch())
-                .targetBranch(pr.getTargetBranch())
-                .headSha(pr.getHeadSha())
-                .validationStatus(pr.getValidationStatus())
+                .authorLogin(pr.getAuthorLogin())
+                .headBranch(pr.getHeadBranch())
+                .baseBranch(pr.getBaseBranch())
+                .draft(pr.getDraft())
+                .merged(pr.getMerged())
                 .additions(pr.getAdditions())
                 .deletions(pr.getDeletions())
-                .changedFilesCount(pr.getChangedFilesCount())
+                .changedFiles(pr.getChangedFiles())
+                .htmlUrl(pr.getHtmlUrl())
+                .githubCreatedAt(pr.getGithubCreatedAt())
+                .githubUpdatedAt(pr.getGithubUpdatedAt())
                 .createdAt(pr.getCreatedAt())
-                .updatedAt(pr.getUpdatedAt())
-                .closedAt(pr.getClosedAt())
-                .mergedAt(pr.getMergedAt())
                 .build();
     }
 }

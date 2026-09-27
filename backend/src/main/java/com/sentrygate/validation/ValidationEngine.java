@@ -88,11 +88,11 @@ public class ValidationEngine {
                     pullRequest.getBody(),
                     pullRequest.getHeadBranch(),
                     pullRequest.getBaseBranch(),
-                    pullRequest.getAdditions(),
-                    pullRequest.getDeletions(),
-                    pullRequest.getChangedFiles(),
+                    pullRequest.getAdditions() != null ? pullRequest.getAdditions() : 0,
+                    pullRequest.getDeletions() != null ? pullRequest.getDeletions() : 0,
+                    pullRequest.getChangedFiles() != null ? pullRequest.getChangedFiles() : 0,
                     Boolean.TRUE.equals(pullRequest.getDraft()),
-                    changedFileNames,
+                    changedFileNames != null ? changedFileNames : Collections.emptyList(),
                     config
             );
 
@@ -139,11 +139,63 @@ public class ValidationEngine {
         validation.setWarningCount((int) warnCount);
         validation.setSkippedCount((int) skipCount);
         validation.setCompletedAt(OffsetDateTime.now());
+        validation.setResults(resultEntities);
         validation = validationRepository.save(validation);
 
         log.info("Validation complete for PR #{}: {} (pass={}, fail={}, warn={})",
                 pullRequest.getNumber(), overallStatus, passCount, failCount, warnCount);
 
         return validation;
+    }
+
+    /**
+     * Evaluates all rules directly for a given ValidationContext and repository ID.
+     */
+    public List<RuleResult> evaluateAll(ValidationContext context, Long repositoryId) {
+        List<RepositoryRule> repoRules = ruleRepository
+                .findByRepositoryIdAndEnabled(repositoryId, true);
+
+        Map<String, Map<String, Object>> ruleConfigs = repoRules.stream()
+                .collect(Collectors.toMap(
+                        RepositoryRule::getRuleCode,
+                        r -> r.getConfiguration() != null ? r.getConfiguration() : Map.of()
+                ));
+
+        Set<String> enabledRuleCodes = repoRules.stream()
+                .map(RepositoryRule::getRuleCode)
+                .collect(Collectors.toSet());
+
+        List<RuleResult> results = new ArrayList<>();
+        for (ValidationRule rule : allRules) {
+            String ruleCode = rule.getRuleCode();
+            if (!enabledRuleCodes.isEmpty() && !enabledRuleCodes.contains(ruleCode)) {
+                results.add(RuleResult.skipped(ruleCode, rule.getRuleName(),
+                        "Rule not enabled for this repository."));
+                continue;
+            }
+
+            Map<String, Object> config = ruleConfigs.getOrDefault(ruleCode, Map.of());
+            ValidationContext ruleContext = new ValidationContext(
+                    context.prTitle(),
+                    context.prBody(),
+                    context.headBranch(),
+                    context.baseBranch(),
+                    context.additions(),
+                    context.deletions(),
+                    context.changedFiles(),
+                    context.isDraft(),
+                    context.changedFileNames(),
+                    config
+            );
+
+            try {
+                results.add(rule.validate(ruleContext));
+            } catch (Exception e) {
+                log.error("Rule {} threw exception: {}", ruleCode, e.getMessage());
+                results.add(RuleResult.fail(ruleCode, rule.getRuleName(), "HIGH",
+                        "Rule execution error: " + e.getMessage()));
+            }
+        }
+        return results;
     }
 }

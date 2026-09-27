@@ -5,7 +5,6 @@ import com.sentrygate.dto.TrustScoreDto;
 import com.sentrygate.dto.TrustScoreHistoryDto;
 import com.sentrygate.entity.Contributor;
 import com.sentrygate.entity.TrustScore;
-import com.sentrygate.entity.TrustScoreHistory;
 import com.sentrygate.exception.ResourceNotFoundException;
 import com.sentrygate.repository.ContributorRepository;
 import com.sentrygate.repository.TrustScoreHistoryRepository;
@@ -16,10 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,62 +29,39 @@ public class ContributorService {
     private final TrustScoringService trustScoringService;
 
     @Transactional(readOnly = true)
-    public List<ContributorDto> getContributorsForRepo(UUID repoId) {
+    public List<ContributorDto> getContributorsForRepo(Long repoId) {
         return contributorRepository.findByRepositoryId(repoId).stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public ContributorDto getContributorById(UUID contributorId) {
+    public ContributorDto getContributorById(Long contributorId) {
         Contributor contributor = contributorRepository.findById(contributorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Contributor", "id", contributorId));
         return mapToDto(contributor);
     }
 
     @Transactional
-    public TrustScoreDto calculateAndUpdateTrustScore(UUID contributorId) {
+    public TrustScoreDto calculateAndUpdateTrustScore(Long contributorId) {
         Contributor contributor = contributorRepository.findById(contributorId)
                 .orElseThrow(() -> new ResourceNotFoundException("Contributor", "id", contributorId));
 
-        TrustScoringService.ScoringResult result = trustScoringService.calculateScore(contributor);
-
-        TrustScore trustScore = trustScoreRepository.findByContributorId(contributorId)
-                .orElseGet(() -> TrustScore.builder()
-                        .contributor(contributor)
-                        .build());
-
-        trustScore.setOverallScore(BigDecimal.valueOf(result.getOverallScore()));
-        trustScore.setPrAcceptanceRate(BigDecimal.valueOf(result.getPrAcceptanceRate()));
-        trustScore.setBuildSuccessRate(BigDecimal.valueOf(result.getBuildSuccessRate()));
-        trustScore.setReviewQualityScore(BigDecimal.valueOf(result.getReviewQualityScore()));
-        trustScore.setAccountAgeDays(result.getAccountAgeDays());
-        trustScore.setRiskTier(result.getRiskTier());
-
-        TrustScore saved = trustScoreRepository.save(trustScore);
-
-        // Record history snapshot
-        historyRepository.save(TrustScoreHistory.builder()
-                .trustScore(saved)
-                .score(saved.getOverallScore())
-                .riskTier(saved.getRiskTier())
-                .recordedAt(OffsetDateTime.now())
-                .build());
-
+        TrustScore saved = trustScoringService.calculateAndSave(contributor);
         return mapToTrustScoreDto(saved);
     }
 
     @Transactional(readOnly = true)
-    public List<TrustScoreHistoryDto> getTrustScoreHistory(UUID contributorId) {
-        TrustScore trustScore = trustScoreRepository.findByContributorId(contributorId)
-                .orElseThrow(() -> new ResourceNotFoundException("TrustScore", "contributorId", contributorId));
-
-        return historyRepository.findByTrustScoreIdOrderByRecordedAtAsc(trustScore.getId()).stream()
+    public List<TrustScoreHistoryDto> getTrustScoreHistory(Long contributorId) {
+        return historyRepository.findByContributorIdOrderByRecordedAtAsc(contributorId).stream()
                 .map(h -> TrustScoreHistoryDto.builder()
                         .id(h.getId())
-                        .trustScoreId(h.getTrustScore().getId())
-                        .score(h.getScore())
-                        .riskTier(h.getRiskTier())
+                        .contributorId(contributorId)
+                        .overallScore(h.getOverallScore())
+                        .prSuccessScore(h.getPrSuccessScore())
+                        .validationScore(h.getValidationScore())
+                        .collaborationScore(h.getCollaborationScore())
+                        .consistencyScore(h.getConsistencyScore())
                         .recordedAt(h.getRecordedAt())
                         .build())
                 .collect(Collectors.toList());
@@ -100,30 +73,38 @@ public class ContributorService {
 
         return ContributorDto.builder()
                 .id(c.getId())
-                .repositoryId(c.getRepository().getId())
-                .username(c.getUsername())
+                .githubId(c.getGithubId())
+                .login(c.getLogin())
+                .name(c.getName())
                 .avatarUrl(c.getAvatarUrl())
-                .totalPrsSubmitted(c.getTotalPrsSubmitted())
-                .prsMerged(c.getPrsMerged())
-                .prsRejected(c.getPrsRejected())
-                .successfulBuilds(c.getSuccessfulBuilds())
-                .failedBuilds(c.getFailedBuilds())
-                .githubAccountCreatedAt(c.getGithubAccountCreatedAt())
-                .createdAt(c.getCreatedAt())
+                .repositoryId(c.getRepository() != null ? c.getRepository().getId() : null)
+                .repositoryFullName(c.getRepository() != null ? c.getRepository().getFullName() : null)
+                .totalPrs(c.getTotalPrs())
+                .mergedPrs(c.getMergedPrs())
+                .rejectedPrs(c.getRejectedPrs())
+                .openPrs(c.getOpenPrs())
+                .totalIssues(c.getTotalIssues())
+                .closedIssues(c.getClosedIssues())
+                .validationPasses(c.getValidationPasses())
+                .validationFailures(c.getValidationFailures())
+                .contributionCount(c.getContributionCount())
+                .firstContributionAt(c.getFirstContributionAt())
+                .lastContributionAt(c.getLastContributionAt())
                 .trustScore(scoreDto)
+                .createdAt(c.getCreatedAt())
                 .build();
     }
 
     private TrustScoreDto mapToTrustScoreDto(TrustScore s) {
         return TrustScoreDto.builder()
                 .id(s.getId())
-                .contributorId(s.getContributor().getId())
+                .contributorId(s.getContributor() != null ? s.getContributor().getId() : null)
+                .contributorLogin(s.getContributor() != null ? s.getContributor().getLogin() : null)
                 .overallScore(s.getOverallScore())
-                .prAcceptanceRate(s.getPrAcceptanceRate())
-                .buildSuccessRate(s.getBuildSuccessRate())
-                .reviewQualityScore(s.getReviewQualityScore())
-                .accountAgeDays(s.getAccountAgeDays())
-                .riskTier(s.getRiskTier())
+                .prSuccessScore(s.getPrSuccessScore())
+                .validationScore(s.getValidationScore())
+                .collaborationScore(s.getCollaborationScore())
+                .consistencyScore(s.getConsistencyScore())
                 .calculatedAt(s.getCalculatedAt())
                 .build();
     }

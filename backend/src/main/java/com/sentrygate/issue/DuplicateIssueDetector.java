@@ -35,7 +35,7 @@ public class DuplicateIssueDetector {
     @Transactional
     public List<IssueSimilarityDto> analyzeDuplicates(Issue targetIssue, double threshold) {
         log.info("Analyzing potential duplicate issues for issue #{} in repository {}", 
-                targetIssue.getIssueNumber(), targetIssue.getRepository().getName());
+                targetIssue.getNumber(), targetIssue.getRepository().getName());
 
         List<Issue> existingIssues = issueRepository.findByRepositoryId(targetIssue.getRepository().getId());
         List<IssueSimilarityDto> matches = new ArrayList<>();
@@ -70,18 +70,17 @@ public class DuplicateIssueDetector {
                                 .build());
 
                 sim.setSimilarityScore(scoreBd);
-                sim.setIsDuplicateCandidate(combinedScore >= 0.70);
                 issueSimilarityRepository.save(sim);
 
                 matches.add(IssueSimilarityDto.builder()
                         .id(sim.getId())
                         .sourceIssueId(targetIssue.getId())
                         .targetIssueId(existing.getId())
-                        .targetIssueNumber(existing.getIssueNumber())
+                        .targetIssueNumber(existing.getNumber())
                         .targetIssueTitle(existing.getTitle())
                         .similarityScore(scoreBd)
-                        .isDuplicateCandidate(combinedScore >= 0.70)
-                        .status(existing.getState())
+                        .method(sim.getMethod())
+                        .createdAt(sim.getCreatedAt())
                         .build());
             }
         }

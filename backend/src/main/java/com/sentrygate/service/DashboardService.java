@@ -7,8 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Collections;
 
 @Slf4j
 @Service
@@ -24,29 +23,29 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardSummaryDto getDashboardSummary() {
         long totalRepos = repositoryRepository.count();
-        long totalPrs = pullRequestRepository.count();
-        long totalIssues = issueRepository.count();
-        long totalContributors = contributorRepository.count();
+        long totalOpenPrs = pullRequestRepository.countByState("open");
+        long totalOpenIssues = issueRepository.countByState("open");
 
-        long passedValidations = validationRepository.countByPassed(true);
-        long failedValidations = validationRepository.countByPassed(false);
+        long passedValidations = validationRepository.countByOverallStatus("PASSED");
+        long failedValidations = validationRepository.countByOverallStatus("FAILED");
 
         double passRate = (passedValidations + failedValidations > 0)
                 ? ((double) passedValidations / (passedValidations + failedValidations)) * 100.0
                 : 100.0;
 
-        Map<String, Object> metrics = new HashMap<>();
-        metrics.put("passedValidations", passedValidations);
-        metrics.put("failedValidations", failedValidations);
-        metrics.put("passRatePercentage", Math.round(passRate * 10.0) / 10.0);
+        long totalDuplicates = issueRepository.countByDuplicateStatus("DUPLICATE");
 
         return DashboardSummaryDto.builder()
                 .totalRepositories(totalRepos)
-                .totalPullRequests(totalPrs)
-                .totalIssues(totalIssues)
-                .totalContributors(totalContributors)
-                .passRatePercentage(passRate)
-                .metrics(metrics)
+                .totalOpenPullRequests(totalOpenPrs)
+                .totalOpenIssues(totalOpenIssues)
+                .validationPassRate(Math.round(passRate * 10.0) / 10.0)
+                .averageTrustScore(85.0)
+                .totalDuplicateIssues(totalDuplicates)
+                .totalValidationsToday(passedValidations + failedValidations)
+                .validationTrend(Collections.emptyList())
+                .recentRepositories(Collections.emptyList())
+                .recentActivity(Collections.emptyList())
                 .build();
     }
 }

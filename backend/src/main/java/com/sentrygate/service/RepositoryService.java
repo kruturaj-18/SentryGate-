@@ -37,91 +37,96 @@ public class RepositoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<RepositoryDto> getUserRepositories(UUID userId) {
-        return repositoryRepository.findByOwnerId(userId).stream()
+    public List<RepositoryDto> getUserRepositories(Long userId) {
+        return repositoryRepository.findByConnectedUserId(userId).stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public RepositoryDto getRepositoryById(UUID repoId) {
+    public RepositoryDto getRepositoryById(Long repoId) {
         Repository repo = repositoryRepository.findById(repoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Repository", "id", repoId));
         return mapToDto(repo);
     }
 
     @Transactional
-    public List<RepositoryDto> syncUserRepositories(UUID userId) {
+    public RepositoryDto toggleQualityGate(Long repoId, boolean enabled) {
+        Repository repo = repositoryRepository.findById(repoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Repository", "id", repoId));
+        repo.setMonitoringStatus(enabled ? "ACTIVE" : "INACTIVE");
+        return mapToDto(repositoryRepository.save(repo));
+    }
+
+    @Transactional
+    public List<RepositoryDto> syncUserRepositories(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
-        if (user.getGithubAccessToken() == null) {
-            log.warn("User {} has no GitHub access token, skipping remote sync", user.getUsername());
+        if (user.getGithubToken() == null) {
+            log.warn("User {} has no GitHub access token, skipping remote sync", user.getLogin());
             return getUserRepositories(userId);
         }
 
-        JsonNode reposNode = gitHubClient.getUserRepositories(user.getGithubAccessToken());
+        JsonNode reposNode = gitHubClient.getUserRepositories(user.getGithubToken());
         List<RepositoryDto> synced = new ArrayList<>();
 
         if (reposNode != null && reposNode.isArray()) {
             for (JsonNode repoNode : reposNode) {
-                Long githubRepoId = repoNode.get("id").asLong();
-                String name = repoNode.get("name").asText();
-                String fullName = repoNode.get("full_name").asText();
-                String owner = repoNode.get("owner").get("login").asText();
-                String defaultBranch = repoNode.has("default_branch") ? repoNode.get("default_branch").asText() : "main";
+                Long githubRepoId  = repoNode.get("id").asLong();
+                String name        = repoNode.get("name").asText();
+                String fullName    = repoNode.get("full_name").asText();
+                String owner       = repoNode.get("owner").get("login").asText();
+                String defaultBranch = repoNode.has("default_branch")
+                        ? repoNode.get("default_branch").asText() : "main";
+                String htmlUrl     = repoNode.has("html_url") ? repoNode.get("html_url").asText() : null;
+                String description = repoNode.has("description") && !repoNode.get("description").isNull()
+                        ? repoNode.get("description").asText() : null;
+                String language    = repoNode.has("language") && !repoNode.get("language").isNull()
+                        ? repoNode.get("language").asText() : null;
+                boolean privateRepo = repoNode.has("private") && repoNode.get("private").asBoolean();
 
                 Repository repo = repositoryRepository.findByGithubRepoId(githubRepoId)
                         .orElseGet(() -> Repository.builder()
                                 .githubRepoId(githubRepoId)
-                                .name(name)
-                                .fullName(fullName)
-                                .owner(owner)
-                                .defaultBranch(defaultBranch)
-                                .ownerUser(user)
-                                .isActive(true)
-                                .qualityGateEnabled(true)
-                                .duplicateDetectionEnabled(true)
-                                .trustScoringEnabled(true)
+                                .connectedUser(user)
                                 .build());
 
                 repo.setName(name);
                 repo.setFullName(fullName);
                 repo.setOwner(owner);
                 repo.setDefaultBranch(defaultBranch);
+                repo.setHtmlUrl(htmlUrl);
+                repo.setDescription(description);
+                repo.setLanguage(language);
+                repo.setPrivateRepo(privateRepo);
 
                 Repository saved = repositoryRepository.save(repo);
                 synced.add(mapToDto(saved));
             }
         }
-
         return synced;
     }
 
-    @Transactional
-    public RepositoryDto toggleQualityGate(UUID repoId, boolean enabled) {
-        Repository repo = repositoryRepository.findById(repoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Repository", "id", repoId));
-        repo.setQualityGateEnabled(enabled);
-        return mapToDto(repositoryRepository.save(repo));
-    }
-
     @Transactional(readOnly = true)
-    public List<RepositoryRuleDto> getRepositoryRules(UUID repoId) {
+    public List<RepositoryRuleDto> getRepositoryRules(Long repoId) {
         List<RepositoryRule> rules = repositoryRuleRepository.findByRepositoryId(repoId);
         return rules.stream()
                 .map(r -> RepositoryRuleDto.builder()
                         .id(r.getId())
                         .repositoryId(r.getRepository().getId())
                         .ruleCode(r.getRuleCode())
-                        .enabled(r.getIsEnabled())
-                        .config(r.getConfigJson())
+                        .ruleName(r.getRuleName())
+                        .enabled(r.getEnabled())
+                        .severity(r.getSeverity())
+                        .configuration(r.getConfiguration())
                         .build())
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public RepositoryRuleDto updateRepositoryRule(UUID repoId, String ruleCode, boolean enabled, Map<String, Object> config) {
+    public RepositoryRuleDto updateRepositoryRule(Long repoId, String ruleCode,
+                                                  boolean enabled, Map<String, Object> config) {
         Repository repo = repositoryRepository.findById(repoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Repository", "id", repoId));
 
@@ -131,9 +136,9 @@ public class RepositoryService {
                         .ruleCode(ruleCode)
                         .build());
 
-        rule.setIsEnabled(enabled);
+        rule.setEnabled(enabled);
         if (config != null) {
-            rule.setConfigJson(config.toString());
+            rule.setConfiguration(config);
         }
         RepositoryRule saved = repositoryRuleRepository.save(rule);
 
@@ -141,8 +146,10 @@ public class RepositoryService {
                 .id(saved.getId())
                 .repositoryId(repo.getId())
                 .ruleCode(saved.getRuleCode())
-                .enabled(saved.getIsEnabled())
-                .config(saved.getConfigJson())
+                .ruleName(saved.getRuleName())
+                .enabled(saved.getEnabled())
+                .severity(saved.getSeverity())
+                .configuration(saved.getConfiguration())
                 .build();
     }
 
@@ -153,13 +160,16 @@ public class RepositoryService {
                 .name(repo.getName())
                 .fullName(repo.getFullName())
                 .owner(repo.getOwner())
+                .htmlUrl(repo.getHtmlUrl())
+                .description(repo.getDescription())
                 .defaultBranch(repo.getDefaultBranch())
-                .isActive(repo.getIsActive())
-                .qualityGateEnabled(repo.getQualityGateEnabled())
-                .duplicateDetectionEnabled(repo.getDuplicateDetectionEnabled())
-                .trustScoringEnabled(repo.getTrustScoringEnabled())
+                .privateRepo(repo.getPrivateRepo())
+                .language(repo.getLanguage())
+                .monitoringStatus(repo.getMonitoringStatus())
+                .openPrCount(repo.getOpenPrCount())
+                .openIssueCount(repo.getOpenIssueCount())
+                .lastSyncedAt(repo.getLastSyncedAt())
                 .createdAt(repo.getCreatedAt())
-                .updatedAt(repo.getUpdatedAt())
                 .build();
     }
 }

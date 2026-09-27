@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface PullRequestValidationRepository extends JpaRepository<PullRequestValidation, Long> {
     List<PullRequestValidation> findByPullRequestIdOrderByCreatedAtDesc(Long pullRequestId);
     Optional<PullRequestValidation> findTopByPullRequestIdOrderByCreatedAtDesc(Long pullRequestId);
+    long countByOverallStatus(String overallStatus);
 
     @Query("SELECT COUNT(v) FROM PullRequestValidation v WHERE v.pullRequest.repository.connectedUser.id = :userId AND v.overallStatus = :status")
     long countByUserIdAndStatus(@Param("userId") Long userId, @Param("status") String status);

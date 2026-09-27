@@ -3,7 +3,6 @@ package com.sentrygate.service;
 import com.sentrygate.dto.IssueDto;
 import com.sentrygate.dto.IssueSimilarityDto;
 import com.sentrygate.entity.Issue;
-import com.sentrygate.entity.Repository;
 import com.sentrygate.exception.ResourceNotFoundException;
 import com.sentrygate.issue.DuplicateIssueDetector;
 import com.sentrygate.repository.IssueRepository;
@@ -14,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -27,20 +25,20 @@ public class IssueService {
     private final DuplicateIssueDetector duplicateIssueDetector;
 
     @Transactional(readOnly = true)
-    public List<IssueDto> getIssuesForRepo(UUID repoId) {
+    public List<IssueDto> getIssuesForRepo(Long repoId) {
         return issueRepository.findByRepositoryId(repoId).stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public IssueDto getIssueById(UUID issueId) {
+    public IssueDto getIssueById(Long issueId) {
         Issue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue", "id", issueId));
-        
+
         List<IssueSimilarityDto> similarities = duplicateIssueDetector.analyzeDuplicates(issue, 0.30);
         IssueDto dto = mapToDto(issue);
-        dto.setDuplicateMatches(similarities);
+        dto.setSimilarities(similarities);
         return dto;
     }
 
@@ -49,30 +47,36 @@ public class IssueService {
         Issue saved = issueRepository.save(issue);
         List<IssueSimilarityDto> similarities = duplicateIssueDetector.analyzeDuplicates(saved, 0.30);
 
-        boolean hasHighDuplicate = similarities.stream().anyMatch(IssueSimilarityDto::getIsDuplicateCandidate);
-        saved.setHasDuplicateCandidates(hasHighDuplicate);
-        issueRepository.save(saved);
+        boolean hasHighDuplicate = similarities.stream()
+                .anyMatch(s -> s.getSimilarityScore() != null && s.getSimilarityScore().doubleValue() >= 0.70);
+        if (hasHighDuplicate) {
+            saved.setDuplicateStatus("DUPLICATE");
+            issueRepository.save(saved);
+        }
 
         IssueDto dto = mapToDto(saved);
-        dto.setDuplicateMatches(similarities);
+        dto.setSimilarities(similarities);
         return dto;
     }
 
     public IssueDto mapToDto(Issue issue) {
         return IssueDto.builder()
                 .id(issue.getId())
-                .repositoryId(issue.getRepository().getId())
+                .repositoryId(issue.getRepository() != null ? issue.getRepository().getId() : null)
+                .repositoryFullName(issue.getRepository() != null ? issue.getRepository().getFullName() : null)
                 .githubIssueId(issue.getGithubIssueId())
-                .issueNumber(issue.getIssueNumber())
+                .number(issue.getNumber())
                 .title(issue.getTitle())
                 .body(issue.getBody())
+                .authorLogin(issue.getAuthorLogin())
                 .state(issue.getState())
-                .authorUsername(issue.getAuthorUsername())
-                .authorAvatarUrl(issue.getAuthorAvatarUrl())
-                .hasDuplicateCandidates(issue.getHasDuplicateCandidates())
+                .labels(issue.getLabels())
+                .htmlUrl(issue.getHtmlUrl())
+                .isPullRequest(issue.getIsPullRequest())
+                .duplicateStatus(issue.getDuplicateStatus())
+                .githubCreatedAt(issue.getGithubCreatedAt())
+                .githubUpdatedAt(issue.getGithubUpdatedAt())
                 .createdAt(issue.getCreatedAt())
-                .updatedAt(issue.getUpdatedAt())
-                .closedAt(issue.getClosedAt())
                 .build();
     }
 }

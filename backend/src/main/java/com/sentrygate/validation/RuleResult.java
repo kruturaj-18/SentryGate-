@@ -50,4 +50,18 @@ public class RuleResult {
                 .status("SKIPPED").severity("INFO").message(message)
                 .build();
     }
+
+    public boolean isPassed() {
+        return "PASS".equalsIgnoreCase(status);
+    }
+
+    public double getScore() {
+        if ("PASS".equalsIgnoreCase(status)) return 100.0;
+        if ("WARNING".equalsIgnoreCase(status)) return 70.0;
+        return 0.0;
+    }
+
+    public OffsetDateTime getExecutedAt() {
+        return timestamp;
+    }
 }

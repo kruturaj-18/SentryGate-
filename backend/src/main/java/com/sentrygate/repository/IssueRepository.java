@@ -12,10 +12,13 @@ import java.util.Optional;
 @Repository
 public interface IssueRepository extends JpaRepository<Issue, Long> {
     Optional<Issue> findByRepositoryIdAndNumber(Long repositoryId, Integer number);
+    List<Issue> findByRepositoryId(Long repositoryId);
     Page<Issue> findByRepositoryId(Long repositoryId, Pageable pageable);
     List<Issue> findByRepositoryIdAndState(Long repositoryId, String state);
     List<Issue> findByRepositoryIdAndIsPullRequest(Long repositoryId, Boolean isPullRequest);
     List<Issue> findByRepositoryIdAndDuplicateStatus(Long repositoryId, String duplicateStatus);
+    long countByState(String state);
+    long countByDuplicateStatus(String duplicateStatus);
     long countByRepositoryIdAndDuplicateStatus(Long repositoryId, String duplicateStatus);
     long countByRepositoryIdAndState(Long repositoryId, String state);
 }

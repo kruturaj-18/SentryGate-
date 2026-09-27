@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -25,14 +24,14 @@ public class NotificationService {
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<NotificationDto> getUserNotifications(UUID userId) {
+    public List<NotificationDto> getUserNotifications(Long userId) {
         return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public NotificationDto createNotification(UUID userId, String type, String title, String message) {
+    public NotificationDto createNotification(Long userId, String type, String title, String message) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
@@ -49,7 +48,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAsRead(UUID notificationId) {
+    public void markAsRead(Long notificationId) {
         Notification n = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification", "id", notificationId));
         n.setIsRead(true);
@@ -59,11 +58,15 @@ public class NotificationService {
     private NotificationDto mapToDto(Notification n) {
         return NotificationDto.builder()
                 .id(n.getId())
-                .userId(n.getUser().getId())
+                .userId(n.getUser() != null ? n.getUser().getId() : null)
                 .type(n.getType())
                 .title(n.getTitle())
                 .message(n.getMessage())
-                .read(n.getIsRead())
+                .isRead(n.getIsRead())
+                .entityType(n.getEntityType())
+                .entityId(n.getEntityId())
+                .repositoryId(n.getRepository() != null ? n.getRepository().getId() : null)
+                .repositoryName(n.getRepository() != null ? n.getRepository().getName() : null)
                 .createdAt(n.getCreatedAt())
                 .build();
     }

@@ -30,6 +30,14 @@ public class SentryGateProperties {
         private String webhookSecret;
         private String apiBaseUrl = "https://api.github.com";
         private String oauthBaseUrl = "https://github.com";
+
+        public String getApiUrl() {
+            return apiBaseUrl;
+        }
+
+        public void setApiUrl(String apiUrl) {
+            this.apiBaseUrl = apiUrl;
+        }
     }
 
     @Getter @Setter

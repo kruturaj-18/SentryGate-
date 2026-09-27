@@ -17,6 +17,7 @@ public interface PullRequestRepository extends JpaRepository<PullRequest, Long> 
     Optional<PullRequest> findByGithubPrId(Long githubPrId);
     Page<PullRequest> findByRepositoryId(Long repositoryId, Pageable pageable);
     List<PullRequest> findByRepositoryIdAndState(Long repositoryId, String state);
+    long countByState(String state);
     long countByRepositoryIdAndState(Long repositoryId, String state);
 
     @Query("SELECT COUNT(p) FROM PullRequest p WHERE p.repository.connectedUser.id = :userId AND p.state = 'open'")

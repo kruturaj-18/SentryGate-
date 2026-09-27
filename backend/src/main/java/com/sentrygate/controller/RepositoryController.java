@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/repositories")
@@ -38,19 +37,19 @@ public class RepositoryController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<RepositoryDto> getRepositoryById(@PathVariable UUID id) {
+    public ResponseEntity<RepositoryDto> getRepositoryById(@PathVariable Long id) {
         return ResponseEntity.ok(repositoryService.getRepositoryById(id));
     }
 
     @PutMapping("/{id}/toggle-gate")
     public ResponseEntity<RepositoryDto> toggleQualityGate(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestParam boolean enabled) {
         return ResponseEntity.ok(repositoryService.toggleQualityGate(id, enabled));
     }
 
     @GetMapping("/{id}/rules")
-    public ResponseEntity<List<RepositoryRuleDto>> getRepositoryRules(@PathVariable UUID id) {
+    public ResponseEntity<List<RepositoryRuleDto>> getRepositoryRules(@PathVariable Long id) {
         return ResponseEntity.ok(repositoryService.getRepositoryRules(id));
     }
 
@@ -63,7 +62,7 @@ public class RepositoryController {
 
     @PutMapping("/{id}/rules")
     public ResponseEntity<RepositoryRuleDto> updateRepositoryRule(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestBody RuleUpdateRequest request) {
         return ResponseEntity.ok(repositoryService.updateRepositoryRule(id, request.getRuleCode(), request.isEnabled(), request.getConfig()));
     }
