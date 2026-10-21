@@ -37,8 +37,6 @@ RepoGuardian — SentryGate is an enterprise-grade quality management platform d
 ```bash
 docker-compose up --build
 ```
-- **Frontend App**: http://localhost:3000
-- **Backend REST API**: http://localhost:8080
 
 ### Running Locally
 
@@ -54,7 +52,7 @@ cd frontend
 npm install
 npm run dev
 ```
-
+website:https://sentry-gate-one.vercel.app/
 ---
 
 ## 💻 Tech Stack
